@@ -16,10 +16,10 @@ button.opt.fail { background: var(--color-background-danger); color: var(--color
 .result { font-size: 13px; white-space: nowrap; }
 .result.ok { color: var(--color-text-success); }
 .result.fail { color: var(--color-text-danger); }
-button.again { font-size: 12px; padding: 4px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap; }
-button.again:hover { background: var(--color-background-secondary); }
-button.share { font-size: 12px; padding: 4px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
-button.share:hover { background: var(--color-background-secondary); }
+button.again { font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 0.5px solid #ccc; background: transparent; color: #666; cursor: pointer; white-space: nowrap; }
+button.again:hover { background: #f5f5f5; }
+button.share { font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 0.5px solid #ccc; background: transparent; color: #666; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+button.share:hover { background: #f5f5f5; }
 .toast { font-size: 12px; color: var(--color-text-success); white-space: nowrap; }
 </style>
 
@@ -35,147 +35,154 @@ const SCALES = {
   'Blues':             [0,3,5,6,7,10,12],
 };
 const FREQS = [261.63,277.18,293.66,311.13,329.63,349.23,369.99,392.00,415.30,440.00,466.16,493.88];
-let actx = null;
-let current = null;
+let actx = null, current = null;
 
 function getCtx() {
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
   if (actx.state === 'suspended') actx.resume();
   return actx;
 }
-
 function playTone(freq, ac, offset) {
-  const t = ac.currentTime + offset;
-  const atk = 0.01, dur = 0.6;
-  const carrier = ac.createOscillator(), mod = ac.createOscillator();
-  const mGain = ac.createGain(), aGain = ac.createGain();
-  carrier.type = mod.type = 'sine';
-  carrier.frequency.setValueAtTime(freq, t);
+  const t = ac.currentTime + offset, atk = 0.01, dur = 0.6;
+  const car = ac.createOscillator(), mod = ac.createOscillator();
+  const mG = ac.createGain(), aG = ac.createGain();
+  car.type = mod.type = 'sine';
+  car.frequency.setValueAtTime(freq, t);
   mod.frequency.setValueAtTime(freq * 14, t);
-  mGain.gain.setValueAtTime(0, t);
-  mGain.gain.linearRampToValueAtTime(1200, t + atk);
-  mGain.gain.exponentialRampToValueAtTime(0.001, t + atk + 1.0);
-  aGain.gain.setValueAtTime(0, t);
-  aGain.gain.linearRampToValueAtTime(0.25, t + atk);
-  aGain.gain.setValueAtTime(0.25, t + dur * 0.5);
-  aGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  mod.connect(mGain); mGain.connect(carrier.frequency);
-  carrier.connect(aGain); aGain.connect(ac.destination);
+  mG.gain.setValueAtTime(0, t);
+  mG.gain.linearRampToValueAtTime(1200, t + atk);
+  mG.gain.exponentialRampToValueAtTime(0.001, t + atk + 1.0);
+  aG.gain.setValueAtTime(0, t);
+  aG.gain.linearRampToValueAtTime(0.25, t + atk);
+  aG.gain.setValueAtTime(0.25, t + dur * 0.5);
+  aG.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  mod.connect(mG); mG.connect(car.frequency);
+  car.connect(aG); aG.connect(ac.destination);
   mod.start(t); mod.stop(t + dur + 0.1);
-  carrier.start(t); carrier.stop(t + dur + 0.1);
+  car.start(t); car.stop(t + dur + 0.1);
 }
-
 function shuffle(a) { return [...a].sort(() => Math.random() - 0.5); }
-
 function newQuestion(autoPlay) {
   const names = Object.keys(SCALES);
   const correct = names[Math.floor(Math.random() * names.length)];
   const root = FREQS[Math.floor(Math.random() * FREQS.length)];
-  const choices = shuffle([correct, ...shuffle(names.filter(n => n !== correct)).slice(0, 3)]);
-  current = { correct, root, steps: SCALES[correct], choices };
-  if (autoPlay) { render('playing'); doPlay(); }
-  else render('idle');
+  current = { correct, root, steps: SCALES[correct], choices: shuffle([correct, ...shuffle(names.filter(n => n !== correct)).slice(0, 3)]) };
+  if (autoPlay) { render('playing'); doPlay(); } else render('idle');
 }
-
-function doPlay(onDone) {
-  const ac = getCtx();
-  const gap = 0.48;
+function doPlay() {
+  const ac = getCtx(), gap = 0.48;
   current.steps.forEach((s, i) => playTone(current.root * Math.pow(2, s / 12), ac, i * gap));
-  const ms = (current.steps.length - 1) * gap * 1000 + 700;
-  setTimeout(() => { render('ready'); if (onDone) onDone(); }, ms);
+  setTimeout(() => render('ready'), (current.steps.length - 1) * gap * 1000 + 700);
 }
+function answer(chosen) { render('answered', chosen); }
 
 function getShareHTML() {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Você consegue identificar esta escala?</title>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trivia de escalas musicais</title>
 <style>
-body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f5f5f5}
-.card{background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:480px;width:90%}
-h1{font-size:17px;font-weight:500;margin:0 0 18px;color:#111}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-button{font-size:13px;padding:6px 14px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#111;cursor:pointer}
-button:hover{background:#f0f0f0}
-button.busy{background:#e8f0fe;color:#1a56db;border-color:#a4c2f4}
-.opts{display:flex;gap:6px;flex-wrap:wrap}
-button.ok{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
-button.fail{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
-.result{font-size:13px;margin-top:12px}
-.result.ok{color:#065f46} .result.fail{color:#991b1b}
-</style></head>
-<body><div class="card">
-<h1>Você consegue identificar esta escala?</h1>
-<div class="row" id="app"></div>
-</div>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:#fff;border-radius:12px;padding:24px 28px;max-width:520px;width:100%;border:1px solid #e5e5e5}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lbl{font-size:13px;color:#666;white-space:nowrap}
+button.play{font-size:13px;padding:5px 12px;border-radius:8px;border:1px solid #ccc;background:#fff;color:#111;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap}
+button.play:hover{background:#f5f5f5}
+button.play.busy{background:#eff6ff;color:#1d4ed8;border-color:#93c5fd}
+.choices{display:flex;gap:6px;flex-wrap:wrap}
+button.opt{font-size:13px;padding:5px 11px;border-radius:8px;border:1px solid #ccc;background:#fff;color:#111;cursor:pointer;white-space:nowrap}
+button.opt:hover:not(:disabled){background:#f5f5f5}
+button.opt:disabled{cursor:default;opacity:.5}
+button.opt.ok{background:#d1fae5;color:#065f46;border-color:#6ee7b7;opacity:1}
+button.opt.fail{background:#fee2e2;color:#991b1b;border-color:#fca5a5;opacity:1}
+.result{font-size:13px;white-space:nowrap}
+.result.ok{color:#065f46}
+.result.fail{color:#991b1b}
+button.again{font-size:12px;padding:4px 10px;border-radius:8px;border:1px solid #ccc;background:transparent;color:#666;cursor:pointer;white-space:nowrap}
+button.again:hover{background:#f5f5f5}
+button.share{font-size:12px;padding:4px 10px;border-radius:8px;border:1px solid #ccc;background:transparent;color:#666;cursor:pointer;white-space:nowrap}
+button.share:hover{background:#f5f5f5}
+.toast{font-size:12px;color:#065f46;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="card"><div class="row" id="app"></div></div>
 <script>
 var SCALES={'Maior':[0,2,4,5,7,9,11,12],'Menor natural':[0,2,3,5,7,8,10,12],'Menor harmônica':[0,2,3,5,7,8,11,12],'Pentatônica maior':[0,2,4,7,9,12],'Pentatônica menor':[0,3,5,7,10,12],'Blues':[0,3,5,6,7,10,12]};
 var FREQS=[261.63,277.18,293.66,311.13,329.63,349.23,369.99,392.00,415.30,440.00,466.16,493.88];
 var actx=null,current=null;
 function getCtx(){if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();return actx;}
 function playTone(freq,ac,off){var t=ac.currentTime+off,atk=0.01,dur=0.6;var car=ac.createOscillator(),mod=ac.createOscillator(),mG=ac.createGain(),aG=ac.createGain();car.type=mod.type='sine';car.frequency.setValueAtTime(freq,t);mod.frequency.setValueAtTime(freq*14,t);mG.gain.setValueAtTime(0,t);mG.gain.linearRampToValueAtTime(1200,t+atk);mG.gain.exponentialRampToValueAtTime(0.001,t+atk+1);aG.gain.setValueAtTime(0,t);aG.gain.linearRampToValueAtTime(0.25,t+atk);aG.gain.setValueAtTime(0.25,t+dur*0.5);aG.gain.exponentialRampToValueAtTime(0.001,t+dur);mod.connect(mG);mG.connect(car.frequency);car.connect(aG);aG.connect(ac.destination);mod.start(t);mod.stop(t+dur+0.1);car.start(t);car.stop(t+dur+0.1);}
-function shuffle(a){return[...a].sort(()=>Math.random()-0.5);}
-function newQ(auto){var names=Object.keys(SCALES),c=names[Math.floor(Math.random()*names.length)],r=FREQS[Math.floor(Math.random()*FREQS.length)];current={correct:c,root:r,steps:SCALES[c],choices:shuffle([c,...shuffle(names.filter(n=>n!==c)).slice(0,3)])};if(auto){render('playing');doPlay();}else render('idle');}
-function doPlay(){var ac=getCtx(),gap=0.48;current.steps.forEach(function(s,i){playTone(current.root*Math.pow(2,s/12),ac,i*gap);});setTimeout(function(){render('ready');},( current.steps.length-1)*gap*1000+700);}
-function render(state,chosen){var app=document.getElementById('app');app.innerHTML='';var lbl=document.createElement('span');lbl.style.cssText='font-size:13px;color:#666;white-space:nowrap';lbl.textContent='Que escala é essa?';app.appendChild(lbl);var pb=document.createElement('button');pb.className=state==='playing'?'busy':'';pb.textContent=state==='playing'?'tocando…':'ouvir';pb.onclick=function(){if(state==='playing')return;render('playing');doPlay();};app.appendChild(pb);var od=document.createElement('div');od.className='opts';od.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;width:100%';current.choices.forEach(function(name){var o=document.createElement('button');o.textContent=name;if(state==='answered'){o.disabled=true;if(name===current.correct)o.classList.add('ok');else if(name===chosen)o.classList.add('fail');}else if(state!=='ready'){o.disabled=true;}else{o.onclick=function(){answer(name);};}od.appendChild(o);});app.appendChild(od);if(state==='answered'){var r=document.createElement('p');r.className='result '+(chosen===current.correct?'ok':'fail');r.textContent=chosen===current.correct?'Correto!':'Era: '+current.correct;app.appendChild(r);var ag=document.createElement('button');ag.style.marginTop='10px';ag.textContent='outra →';ag.onclick=function(){newQ(true);};app.appendChild(ag);}}
+function shuffle(a){return[...a].sort(function(){return Math.random()-0.5;});}
+function newQuestion(auto){var names=Object.keys(SCALES),c=names[Math.floor(Math.random()*names.length)],r=FREQS[Math.floor(Math.random()*FREQS.length)];current={correct:c,root:r,steps:SCALES[c],choices:shuffle([c].concat(shuffle(names.filter(function(n){return n!==c;})).slice(0,3)))};if(auto){render('playing');doPlay();}else render('idle');}
+function doPlay(){var ac=getCtx(),gap=0.48;current.steps.forEach(function(s,i){playTone(current.root*Math.pow(2,s/12),ac,i*gap);});setTimeout(function(){render('ready');},(current.steps.length-1)*gap*1000+700);}
 function answer(c){render('answered',c);}
-newQ(true);
-<\/script></body></html>`;
+function getShareHTML(){return document.documentElement.outerHTML;}
+function render(state,chosen,toast){
+  var app=document.getElementById('app');app.innerHTML='';
+  var lbl=document.createElement('span');lbl.className='lbl';lbl.textContent='Que escala é essa?';app.appendChild(lbl);
+  var pb=document.createElement('button');pb.className='play'+(state==='playing'?' busy':'');pb.textContent=state==='playing'?'tocando…':'ouvir';
+  pb.onclick=function(){if(state==='playing')return;render('playing');doPlay();};app.appendChild(pb);
+  var od=document.createElement('div');od.className='choices';
+  current.choices.forEach(function(name){var o=document.createElement('button');o.className='opt';o.textContent=name;
+    if(state==='answered'){o.disabled=true;if(name===current.correct)o.classList.add('ok');else if(name===chosen)o.classList.add('fail');}
+    else if(state!=='ready'){o.disabled=true;}
+    else{o.onclick=function(){answer(name);};}
+    od.appendChild(o);});
+  app.appendChild(od);
+  if(state==='answered'){
+    var r=document.createElement('span');r.className='result '+(chosen===current.correct?'ok':'fail');r.textContent=chosen===current.correct?'✓ correto!':'✗ era '+current.correct;app.appendChild(r);
+    var ag=document.createElement('button');ag.className='again';ag.textContent='outra →';ag.onclick=function(){newQuestion(true);};app.appendChild(ag);
+  }
+  var sh=document.createElement('button');sh.className='share';sh.textContent='compartilhar';
+  sh.onclick=function(){var blob=new Blob([getShareHTML()],{type:'text/html'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='trivia-escalas.html';a.click();URL.revokeObjectURL(url);render(state,chosen,true);};
+  app.appendChild(sh);
+  if(toast){var tst=document.createElement('span');tst.className='toast';tst.textContent='arquivo baixado!';app.appendChild(tst);}
+}
+newQuestion(false);
+<\/script>
+</body>
+</html>`;
 }
 
 function render(state, chosen, toast) {
   const app = document.getElementById('app');
   app.innerHTML = '';
-
   const lbl = document.createElement('span');
   lbl.className = 'lbl';
   lbl.textContent = 'Que escala é essa?';
   app.appendChild(lbl);
-
   const pb = document.createElement('button');
   pb.className = 'play' + (state === 'playing' ? ' busy' : '');
-  pb.innerHTML = state === 'playing'
-    ? '<i class="ti ti-music" aria-hidden="true"></i> tocando…'
-    : '<i class="ti ti-player-play" aria-hidden="true"></i> ouvir';
-  pb.addEventListener('click', () => {
-    if (state === 'playing') return;
-    render('playing');
-    doPlay();
-  });
+  pb.innerHTML = state === 'playing' ? '<i class="ti ti-music" aria-hidden="true"></i> tocando…' : '<i class="ti ti-player-play" aria-hidden="true"></i> ouvir';
+  pb.addEventListener('click', () => { if (state === 'playing') return; render('playing'); doPlay(); });
   app.appendChild(pb);
-
   const od = document.createElement('div');
   od.className = 'choices';
   current.choices.forEach(name => {
     const o = document.createElement('button');
     o.className = 'opt';
     o.textContent = name;
-    if (state === 'answered') {
-      o.disabled = true;
-      if (name === current.correct) o.classList.add('ok');
-      else if (name === chosen) o.classList.add('fail');
-    } else if (state !== 'ready') {
-      o.disabled = true;
-    } else {
-      o.addEventListener('click', () => answer(name));
-    }
+    if (state === 'answered') { o.disabled = true; if (name === current.correct) o.classList.add('ok'); else if (name === chosen) o.classList.add('fail'); }
+    else if (state !== 'ready') { o.disabled = true; }
+    else { o.addEventListener('click', () => answer(name)); }
     od.appendChild(o);
   });
   app.appendChild(od);
-
   if (state === 'answered') {
     const r = document.createElement('span');
     r.className = 'result ' + (chosen === current.correct ? 'ok' : 'fail');
     r.textContent = chosen === current.correct ? '✓ correto!' : '✗ era ' + current.correct;
     app.appendChild(r);
-
     const ag = document.createElement('button');
     ag.className = 'again';
     ag.textContent = 'outra →';
     ag.addEventListener('click', () => newQuestion(true));
     app.appendChild(ag);
   }
-
   const sh = document.createElement('button');
   sh.className = 'share';
   sh.innerHTML = '<i class="ti ti-share" aria-hidden="true"></i> compartilhar';
@@ -184,14 +191,11 @@ function render(state, chosen, toast) {
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'trivia-escalas.html';
-    a.click();
+    a.href = url; a.download = 'trivia-escalas.html'; a.click();
     URL.revokeObjectURL(url);
     render(state, chosen, true);
   });
   app.appendChild(sh);
-
   if (toast) {
     const t = document.createElement('span');
     t.className = 'toast';
@@ -199,8 +203,6 @@ function render(state, chosen, toast) {
     app.appendChild(t);
   }
 }
-
-function answer(chosen) { render('answered', chosen); }
 
 newQuestion(false);
 </script>
