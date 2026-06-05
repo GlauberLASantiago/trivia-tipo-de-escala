@@ -1,0 +1,19 @@
+crie um app html unico que seja um tocador de escalas para treinamento de percepção musical. ele toca a escala e o usuário tem que identificar o tipo de escala. 
+
+Aja como um programador especialista em Web Audio API. 
+Eu criei um timbre usando Síntese FM (2 operadores) com a seguinte configuração:
+
+- Carrier Ratio: 1
+- Modulator Ratio: 14
+- Modulation Index Máximo: 1200
+- Volume Base: 0.25
+
+Por favor, gere uma função JavaScript chamada `playTone(frequenciaBase, audioContext)` que reproduza este exato timbre usando Web Audio API.
+
+Regras de implementação:
+1. Crie dois osciladores 'sine' (Carrier e Modulator).
+2. A frequência do Carrier é frequenciaBase * 1.
+3. A frequência do Modulator é frequenciaBase * 14.
+4. Conecte o Modulator em um GainNode (ModGain), e este GainNode no .frequency do Carrier.
+5. IMPORTANTE: Para o som ficar natural, aplique um envelope no ModGain. Ele deve atingir rapidamente o valor de 1200 (ataque) e decair exponencialmente ao longo de 1 segundo.
+6. Aplique um envelope ADSR simples no ganho final de saída (Volume máximo: 0.25) antes de ir para o destino.
