@@ -1,19 +1,151 @@
-crie um app html unico que seja um tocador de escalas para treinamento de percepção musical. ele toca a escala e o usuário tem que identificar o tipo de escala. 
 
-Aja como um programador especialista em Web Audio API. 
-Eu criei um timbre usando Síntese FM (2 operadores) com a seguinte configuração:
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.row { display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: wrap; font-family: var(--font-sans); }
+.lbl { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+button.play { font-size: 13px; padding: 5px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+button.play:hover { background: var(--color-background-secondary); }
+button.play.busy { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+.choices { display: flex; gap: 6px; flex-wrap: wrap; }
+button.opt { font-size: 13px; padding: 5px 11px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; white-space: nowrap; }
+button.opt:hover:not(:disabled) { background: var(--color-background-secondary); }
+button.opt:disabled { cursor: default; }
+button.opt.ok { background: var(--color-background-success); color: var(--color-text-success); border-color: var(--color-border-success); }
+button.opt.fail { background: var(--color-background-danger); color: var(--color-text-danger); border-color: var(--color-border-danger); }
+.result { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+.result.ok { color: var(--color-text-success); }
+.result.fail { color: var(--color-text-danger); }
+button.again { font-size: 12px; padding: 4px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap; }
+button.again:hover { background: var(--color-background-secondary); }
+</style>
 
-- Carrier Ratio: 1
-- Modulator Ratio: 14
-- Modulation Index Máximo: 1200
-- Volume Base: 0.25
+<div class="row" id="app"></div>
 
-Por favor, gere uma função JavaScript chamada `playTone(frequenciaBase, audioContext)` que reproduza este exato timbre usando Web Audio API.
+<script>
+const SCALES = {
+  'Maior':             [0,2,4,5,7,9,11,12],
+  'Menor natural':     [0,2,3,5,7,8,10,12],
+  'Menor harmônica':   [0,2,3,5,7,8,11,12],
+  'Pentatônica maior': [0,2,4,7,9,12],
+  'Pentatônica menor': [0,3,5,7,10,12],
+  'Blues':             [0,3,5,6,7,10,12],
+};
+const FREQS = [261.63,277.18,293.66,311.13,329.63,349.23,369.99,392.00,415.30,440.00,466.16,493.88];
+let ctx = null;
+let current = null;
 
-Regras de implementação:
-1. Crie dois osciladores 'sine' (Carrier e Modulator).
-2. A frequência do Carrier é frequenciaBase * 1.
-3. A frequência do Modulator é frequenciaBase * 14.
-4. Conecte o Modulator em um GainNode (ModGain), e este GainNode no .frequency do Carrier.
-5. IMPORTANTE: Para o som ficar natural, aplique um envelope no ModGain. Ele deve atingir rapidamente o valor de 1200 (ataque) e decair exponencialmente ao longo de 1 segundo.
-6. Aplique um envelope ADSR simples no ganho final de saída (Volume máximo: 0.25) antes de ir para o destino.
+function getCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+function playTone(freq, ac, offset) {
+  const t = ac.currentTime + offset;
+  const atk = 0.01, dur = 0.6;
+  const carrier = ac.createOscillator(), mod = ac.createOscillator();
+  const mGain = ac.createGain(), aGain = ac.createGain();
+  carrier.type = mod.type = 'sine';
+  carrier.frequency.setValueAtTime(freq, t);
+  mod.frequency.setValueAtTime(freq * 14, t);
+  mGain.gain.setValueAtTime(0, t);
+  mGain.gain.linearRampToValueAtTime(1200, t + atk);
+  mGain.gain.exponentialRampToValueAtTime(0.001, t + atk + 1.0);
+  aGain.gain.setValueAtTime(0, t);
+  aGain.gain.linearRampToValueAtTime(0.25, t + atk);
+  aGain.gain.setValueAtTime(0.25, t + dur * 0.5);
+  aGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  mod.connect(mGain); mGain.connect(carrier.frequency);
+  carrier.connect(aGain); aGain.connect(ac.destination);
+  mod.start(t); mod.stop(t + dur + 0.1);
+  carrier.start(t); carrier.stop(t + dur + 0.1);
+}
+
+function shuffle(a) { return [...a].sort(() => Math.random() - 0.5); }
+
+function newQuestion() {
+  const names = Object.keys(SCALES);
+  const correct = names[Math.floor(Math.random() * names.length)];
+  const root = FREQS[Math.floor(Math.random() * FREQS.length)];
+  const choices = shuffle([correct, ...shuffle(names.filter(n => n !== correct)).slice(0, 3)]);
+  current = { correct, root, steps: SCALES[correct], choices, played: false };
+  render('idle');
+}
+
+function playScale(onDone) {
+  const ac = getCtx();
+  const gap = 0.48;
+  current.steps.forEach((s, i) => playTone(current.root * Math.pow(2, s / 12), ac, i * gap));
+  setTimeout(onDone, (current.steps.length - 1) * gap * 1000 + 700);
+}
+
+function render(state, chosen) {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const lbl = document.createElement('span');
+  lbl.className = 'lbl';
+  lbl.textContent = 'Que escala é essa?';
+  app.appendChild(lbl);
+
+  const btn = document.createElement('button');
+  btn.className = 'play' + (state === 'playing' ? ' busy' : '');
+  btn.innerHTML = state === 'playing'
+    ? '<i class="ti ti-music" aria-hidden="true"></i> tocando…'
+    : '<i class="ti ti-player-play" aria-hidden="true"></i> ouvir';
+  btn.addEventListener('click', () => {
+    if (state === 'playing') return;
+    render('playing');
+    playScale(() => { current.played = true; render('ready'); });
+  });
+  app.appendChild(btn);
+
+  const div = document.createElement('div');
+  div.className = 'choices';
+
+  if (state === 'idle' || state === 'playing') {
+    current.choices.forEach(name => {
+      const o = document.createElement('button');
+      o.className = 'opt';
+      o.textContent = name;
+      o.disabled = state !== 'ready';
+      div.appendChild(o);
+    });
+  } else if (state === 'ready' || state === 'answered') {
+    current.choices.forEach(name => {
+      const o = document.createElement('button');
+      o.className = 'opt';
+      o.textContent = name;
+      if (state === 'answered') {
+        o.disabled = true;
+        if (name === current.correct) o.classList.add('ok');
+        else if (name === chosen) o.classList.add('fail');
+      } else {
+        o.addEventListener('click', () => answer(name));
+      }
+      div.appendChild(o);
+    });
+  }
+  app.appendChild(div);
+
+  if (state === 'answered') {
+    const r = document.createElement('span');
+    const correct = chosen === current.correct;
+    r.className = 'result ' + (correct ? 'ok' : 'fail');
+    r.textContent = correct ? '✓ correto!' : '✗ era ' + current.correct;
+    app.appendChild(r);
+
+    const ag = document.createElement('button');
+    ag.className = 'again';
+    ag.textContent = 'outra →';
+    ag.addEventListener('click', newQuestion);
+    app.appendChild(ag);
+  }
+}
+
+function answer(chosen) {
+  render('answered', chosen);
+}
+
+newQuestion();
+</script>
